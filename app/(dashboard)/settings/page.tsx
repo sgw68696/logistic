@@ -92,7 +92,7 @@ export default function SettingsPage() {
   return (
     <PageWrapper
       title="Settings"
-      subtitle="Manage your account and application settings"
+      description="Manage your account and application settings"
     >
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-none">

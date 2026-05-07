@@ -262,8 +262,8 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="User Management" subtitle="Manage system users">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="User Management" description="Manage system users">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -271,7 +271,7 @@ export default function UsersPage() {
   return (
     <PageWrapper
       title="User Management"
-      subtitle="Manage system users and permissions"
+      description="Manage system users and permissions"
       actions={
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>

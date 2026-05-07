@@ -336,8 +336,8 @@ export default function FinancePage() {
 
   if (loading) {
     return (
-      <PageWrapper title="Finance" subtitle="Manage invoices and expenses">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="Finance" description="Manage invoices and expenses">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -345,7 +345,7 @@ export default function FinancePage() {
   return (
     <PageWrapper
       title="Finance"
-      subtitle="Manage invoices, payments, and expenses"
+      description="Manage invoices, payments, and expenses"
       actions={
         <div className="flex gap-2">
           <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
