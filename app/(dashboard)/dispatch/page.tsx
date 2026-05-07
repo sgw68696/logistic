@@ -1,0 +1,526 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { shipmentService, type Shipment } from "@/services/shipmentService";
+import { fleetService, type Vehicle } from "@/services/fleetService";
+import { driverService, type Driver } from "@/services/driverService";
+import { formatDate } from "@/lib/utils";
+import {
+  Search,
+  Filter,
+  Truck,
+  User,
+  Package,
+  MapPin,
+  Clock,
+  ArrowRight,
+  CheckCircle,
+  AlertCircle,
+  Calendar,
+  LayoutGrid,
+  List,
+  RefreshCw,
+} from "lucide-react";
+
+export default function DispatchPage() {
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<string>("");
+  const [selectedDriver, setSelectedDriver] = useState<string>("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [shipmentsData, vehiclesData, driversData] = await Promise.all([
+      shipmentService.getShipments(),
+      fleetService.getVehicles(),
+      driverService.getDrivers(),
+    ]);
+    setShipments(shipmentsData);
+    setVehicles(vehiclesData);
+    setDrivers(driversData);
+    setLoading(false);
+  };
+
+  const pendingShipments = shipments.filter(
+    (s) => s.status === "Pending" || s.status === "Picked Up"
+  );
+  const inTransitShipments = shipments.filter((s) => s.status === "In Transit");
+  const outForDeliveryShipments = shipments.filter(
+    (s) => s.status === "Out for Delivery"
+  );
+
+  const availableVehicles = vehicles.filter((v) => v.status === "Available");
+  const availableDrivers = drivers.filter(
+    (d) => d.status === "Active" || d.status === "Off Duty"
+  );
+
+  const handleAssign = async () => {
+    if (!selectedShipment || !selectedVehicle || !selectedDriver) return;
+
+    await shipmentService.updateShipment(selectedShipment.id, {
+      status: "In Transit",
+    });
+
+    setSelectedShipment(null);
+    setSelectedVehicle("");
+    setSelectedDriver("");
+    loadData();
+  };
+
+  const filteredPending = pendingShipments.filter(
+    (s) =>
+      s.trackingId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.origin.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.destination.city.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <PageWrapper title="Dispatch Management" subtitle="Assign shipments to vehicles">
+        <SkeletonLoader type="cards" count={6} />
+      </PageWrapper>
+    );
+  }
+
+  return (
+    <PageWrapper
+      title="Dispatch Management"
+      subtitle="Assign shipments to vehicles and drivers"
+      actions={
+        <Button variant="outline" onClick={loadData}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      }
+    >
+      {/* Stats Overview */}
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Assignment</p>
+                <p className="text-2xl font-bold">{pendingShipments.length}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+                <Clock className="h-6 w-6 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">In Transit</p>
+                <p className="text-2xl font-bold">{inTransitShipments.length}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                <Truck className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Out for Delivery</p>
+                <p className="text-2xl font-bold">{outForDeliveryShipments.length}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100">
+                <Package className="h-6 w-6 text-indigo-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Available Resources</p>
+                <p className="text-2xl font-bold">
+                  {availableVehicles.length}V / {availableDrivers.length}D
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Pending Shipments */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle className="text-lg font-semibold">Pending Shipments</CardTitle>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search..."
+                  className="w-[200px] pl-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex rounded-lg border">
+                <Button
+                  variant={view === "grid" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="rounded-r-none"
+                  onClick={() => setView("grid")}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={view === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="rounded-l-none"
+                  onClick={() => setView("list")}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[500px]">
+              {filteredPending.length === 0 ? (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  No pending shipments found
+                </div>
+              ) : view === "grid" ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {filteredPending.map((shipment) => (
+                    <Card
+                      key={shipment.id}
+                      className={`cursor-pointer transition-all hover:shadow-md ${
+                        selectedShipment?.id === shipment.id
+                          ? "ring-2 ring-primary"
+                          : ""
+                      }`}
+                      onClick={() => setSelectedShipment(shipment)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-sm font-medium">
+                            {shipment.trackingId}
+                          </span>
+                          <StatusBadge status={shipment.status} />
+                        </div>
+                        <div className="mb-3 flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-green-500" />
+                            <span>{shipment.origin.city}</span>
+                          </div>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-red-500" />
+                            <span>{shipment.destination.city}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{shipment.weight} kg</span>
+                          <span>
+                            Est: {formatDate(shipment.estimatedDelivery, "short")}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredPending.map((shipment) => (
+                    <div
+                      key={shipment.id}
+                      className={`flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-all hover:bg-accent ${
+                        selectedShipment?.id === shipment.id
+                          ? "ring-2 ring-primary"
+                          : ""
+                      }`}
+                      onClick={() => setSelectedShipment(shipment)}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Package className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{shipment.trackingId}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {shipment.origin.city} → {shipment.destination.city}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right text-sm">
+                          <p>{shipment.weight} kg</p>
+                          <p className="text-muted-foreground">
+                            {formatDate(shipment.estimatedDelivery, "short")}
+                          </p>
+                        </div>
+                        <StatusBadge status={shipment.status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Assignment Panel */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Assign Resources</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedShipment ? (
+              <div className="space-y-6">
+                {/* Selected Shipment Info */}
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="font-mono text-sm font-medium">
+                      {selectedShipment.trackingId}
+                    </span>
+                    <StatusBadge status={selectedShipment.status} />
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-green-500" />
+                      <span>{selectedShipment.origin.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-red-500" />
+                      <span>{selectedShipment.destination.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <span>
+                        {selectedShipment.weight} kg, {selectedShipment.dimensions}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span>
+                        Deliver by{" "}
+                        {formatDate(selectedShipment.estimatedDelivery, "short")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Vehicle Selection */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Vehicle</label>
+                  <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableVehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.id} value={vehicle.id}>
+                          <div className="flex items-center gap-2">
+                            <Truck className="h-4 w-4" />
+                            <span>
+                              {vehicle.vehicleNumber} - {vehicle.type}
+                            </span>
+                            <Badge variant="outline" className="ml-2">
+                              {vehicle.capacity} kg
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableVehicles.length === 0 && (
+                    <p className="text-sm text-amber-600">
+                      <AlertCircle className="mr-1 inline h-4 w-4" />
+                      No vehicles available
+                    </p>
+                  )}
+                </div>
+
+                {/* Driver Selection */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Driver</label>
+                  <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a driver" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableDrivers.map((driver) => (
+                        <SelectItem key={driver.id} value={driver.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={driver.avatar} />
+                              <AvatarFallback>
+                                {driver.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{driver.name}</span>
+                            <Badge variant="outline" className="ml-2">
+                              {driver.rating.toFixed(1)} ★
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableDrivers.length === 0 && (
+                    <p className="text-sm text-amber-600">
+                      <AlertCircle className="mr-1 inline h-4 w-4" />
+                      No drivers available
+                    </p>
+                  )}
+                </div>
+
+                {/* Assign Button */}
+                <Button
+                  className="w-full"
+                  disabled={!selectedVehicle || !selectedDriver}
+                  onClick={handleAssign}
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Assign & Dispatch
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setSelectedShipment(null);
+                    setSelectedVehicle("");
+                    setSelectedDriver("");
+                  }}
+                >
+                  Cancel Selection
+                </Button>
+              </div>
+            ) : (
+              <div className="flex h-[400px] flex-col items-center justify-center text-center text-muted-foreground">
+                <Package className="mb-4 h-12 w-12" />
+                <p className="font-medium">No Shipment Selected</p>
+                <p className="text-sm">
+                  Click on a pending shipment to assign resources
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Active Routes Section */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">Active Routes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="inTransit">
+            <TabsList>
+              <TabsTrigger value="inTransit">
+                In Transit ({inTransitShipments.length})
+              </TabsTrigger>
+              <TabsTrigger value="outForDelivery">
+                Out for Delivery ({outForDeliveryShipments.length})
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="inTransit" className="mt-4">
+              {inTransitShipments.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-muted-foreground">
+                  No shipments in transit
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {inTransitShipments.map((shipment) => (
+                    <Card key={shipment.id}>
+                      <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-sm font-medium">
+                            {shipment.trackingId}
+                          </span>
+                          <StatusBadge status={shipment.status} />
+                        </div>
+                        <div className="mb-2 flex items-center gap-2 text-sm">
+                          <MapPin className="h-3 w-3 text-green-500" />
+                          <span>{shipment.origin.city}</span>
+                          <ArrowRight className="h-3 w-3" />
+                          <MapPin className="h-3 w-3 text-red-500" />
+                          <span>{shipment.destination.city}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          ETA: {formatDate(shipment.estimatedDelivery, "datetime")}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="outForDelivery" className="mt-4">
+              {outForDeliveryShipments.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-muted-foreground">
+                  No shipments out for delivery
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {outForDeliveryShipments.map((shipment) => (
+                    <Card key={shipment.id}>
+                      <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="font-mono text-sm font-medium">
+                            {shipment.trackingId}
+                          </span>
+                          <StatusBadge status={shipment.status} />
+                        </div>
+                        <div className="mb-2 flex items-center gap-2 text-sm">
+                          <MapPin className="h-3 w-3 text-red-500" />
+                          <span>{shipment.destination.city}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {shipment.destination.address}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </PageWrapper>
+  );
+}
