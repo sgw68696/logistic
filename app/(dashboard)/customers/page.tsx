@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { DataTable } from "@/components/shared/DataTable";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -34,8 +33,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { customerService, type Customer } from "@/services/customerService";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { getCustomers, createCustomer, deleteCustomer } from "@/services/customerService";
+import { type Customer } from "@/data/mockData";
+import { formatCurrency } from "@/lib/utils";
 import {
   Plus,
   Search,
@@ -50,10 +50,10 @@ import {
   Trash2,
   Building,
   User,
-  TrendingUp,
   Package,
   IndianRupee,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -69,12 +69,8 @@ export default function CustomersPage() {
     email: "",
     phone: "",
     type: "Individual" as Customer["type"],
-    company: "",
-    gstNumber: "",
-    address: "",
     city: "",
-    state: "",
-    pincode: "",
+    address: "",
   });
 
   useEffect(() => {
@@ -83,29 +79,53 @@ export default function CustomersPage() {
 
   const loadCustomers = async () => {
     setLoading(true);
-    const data = await customerService.getCustomers();
-    setCustomers(data);
-    setLoading(false);
+    try {
+      const data = await getCustomers();
+      setCustomers(data);
+    } catch {
+      toast.error("Failed to load customers");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddCustomer = async () => {
-    await customerService.createCustomer({
-      ...formData,
-      totalOrders: 0,
-      totalSpent: 0,
-      lastOrder: null,
-      status: "Active",
-      createdAt: new Date().toISOString().split("T")[0],
-    });
-    setIsAddDialogOpen(false);
-    resetForm();
-    loadCustomers();
+    if (!formData.name || !formData.email || !formData.phone) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
+    try {
+      await createCustomer({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        type: formData.type,
+        city: formData.city,
+        address: formData.address,
+        totalShipments: 0,
+        outstandingBalance: 0,
+        createdAt: new Date().toISOString(),
+        slaContract: null,
+      });
+      toast.success("Customer added successfully");
+      setIsAddDialogOpen(false);
+      resetForm();
+      loadCustomers();
+    } catch {
+      toast.error("Failed to add customer");
+    }
   };
 
   const handleDeleteCustomer = async (id: string) => {
     if (confirm("Are you sure you want to delete this customer?")) {
-      await customerService.deleteCustomer(id);
-      loadCustomers();
+      try {
+        await deleteCustomer(id);
+        toast.success("Customer deleted successfully");
+        loadCustomers();
+      } catch {
+        toast.error("Failed to delete customer");
+      }
     }
   };
 
@@ -115,12 +135,8 @@ export default function CustomersPage() {
       email: "",
       phone: "",
       type: "Individual",
-      company: "",
-      gstNumber: "",
-      address: "",
       city: "",
-      state: "",
-      pincode: "",
+      address: "",
     });
   };
 
@@ -128,124 +144,112 @@ export default function CustomersPage() {
     const matchesSearch =
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.phone.includes(searchQuery) ||
-      (customer.company &&
-        customer.company.toLowerCase().includes(searchQuery.toLowerCase()));
+      customer.phone.includes(searchQuery);
     const matchesType = typeFilter === "all" || customer.type === typeFilter;
     return matchesSearch && matchesType;
   });
 
-  const totalRevenue = customers.reduce((sum, c) => sum + c.totalSpent, 0);
-  const totalOrders = customers.reduce((sum, c) => sum + c.totalOrders, 0);
+  const totalShipments = customers.reduce((sum, c) => sum + c.totalShipments, 0);
+  const totalOutstanding = customers.reduce((sum, c) => sum + c.outstandingBalance, 0);
   const businessCustomers = customers.filter((c) => c.type === "Business").length;
 
-  const columns = [
+  const columns: Column<Customer>[] = [
     {
       key: "name",
-      label: "Customer",
+      header: "Customer",
       sortable: true,
-      render: (value: string, row: Customer) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <Avatar>
             <AvatarFallback>
-              {value
+              {item.name
                 .split(" ")
                 .map((n) => n[0])
-                .join("")}
+                .join("")
+                .slice(0, 2)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">
-              {row.company || row.email}
-            </p>
+            <p className="font-medium">{item.name}</p>
+            <p className="text-sm text-muted-foreground">{item.email}</p>
           </div>
         </div>
       ),
     },
     {
       key: "type",
-      label: "Type",
+      header: "Type",
       sortable: true,
-      render: (value: string) => (
-        <Badge variant={value === "Business" ? "default" : "secondary"}>
-          {value === "Business" ? (
+      render: (item) => (
+        <Badge variant={item.type === "Business" ? "default" : "secondary"}>
+          {item.type === "Business" ? (
             <Building className="mr-1 h-3 w-3" />
           ) : (
             <User className="mr-1 h-3 w-3" />
           )}
-          {value}
+          {item.type}
         </Badge>
       ),
     },
     {
       key: "phone",
-      label: "Contact",
-      render: (value: string, row: Customer) => (
+      header: "Contact",
+      render: (item) => (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm">
             <Phone className="h-3 w-3 text-muted-foreground" />
-            <span>{value}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Mail className="h-3 w-3" />
-            <span>{row.email}</span>
+            <span>{item.phone}</span>
           </div>
         </div>
       ),
     },
     {
       key: "city",
-      label: "Location",
+      header: "Location",
       sortable: true,
-      render: (value: string, row: Customer) => (
+      render: (item) => (
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-muted-foreground" />
-          <span>
-            {value}, {row.state}
-          </span>
+          <span>{item.city}</span>
         </div>
       ),
     },
     {
-      key: "totalOrders",
-      label: "Orders",
+      key: "totalShipments",
+      header: "Shipments",
       sortable: true,
-      render: (value: number) => (
+      render: (item) => (
         <div className="flex items-center gap-2">
           <Package className="h-4 w-4 text-muted-foreground" />
-          <span>{value}</span>
+          <span>{item.totalShipments}</span>
         </div>
       ),
     },
     {
-      key: "totalSpent",
-      label: "Total Spent",
+      key: "outstandingBalance",
+      header: "Outstanding",
       sortable: true,
-      render: (value: number) => (
-        <span className="font-medium">{formatCurrency(value)}</span>
+      render: (item) => (
+        <span className={`font-medium ${item.outstandingBalance > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+          {formatCurrency(item.outstandingBalance)}
+        </span>
       ),
-    },
-    {
-      key: "status",
-      label: "Status",
-      sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: Customer) => (
+      header: "",
+      render: (item) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => {
-                setSelectedCustomer(row);
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedCustomer(item);
                 setIsDetailOpen(true);
               }}
             >
@@ -258,7 +262,10 @@ export default function CustomersPage() {
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => handleDeleteCustomer(row.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteCustomer(item.id);
+              }}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -271,8 +278,8 @@ export default function CustomersPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="Customer Management" subtitle="Manage your customers">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="Customer Management" description="Manage your customers">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -280,159 +287,12 @@ export default function CustomersPage() {
   return (
     <PageWrapper
       title="Customer Management"
-      subtitle="Manage your customers and their information"
+      description="Manage your customers and their information"
       actions={
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Customer
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Add New Customer</DialogTitle>
-              <DialogDescription>
-                Enter the details for the new customer.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Full name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="type">Type</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value: Customer["type"]) =>
-                      setFormData({ ...formData, type: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Individual">Individual</SelectItem>
-                      <SelectItem value="Business">Business</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {formData.type === "Business" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="company">Company</Label>
-                    <Input
-                      id="company"
-                      placeholder="Company name"
-                      value={formData.company}
-                      onChange={(e) =>
-                        setFormData({ ...formData, company: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="gstNumber">GST Number</Label>
-                    <Input
-                      id="gstNumber"
-                      placeholder="GST number"
-                      value={formData.gstNumber}
-                      onChange={(e) =>
-                        setFormData({ ...formData, gstNumber: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Email address"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    placeholder="Phone number"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="address">Address</Label>
-                <Textarea
-                  id="address"
-                  placeholder="Full address"
-                  value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    placeholder="City"
-                    value={formData.city}
-                    onChange={(e) =>
-                      setFormData({ ...formData, city: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    placeholder="State"
-                    value={formData.state}
-                    onChange={(e) =>
-                      setFormData({ ...formData, state: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    placeholder="Pincode"
-                    value={formData.pincode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, pincode: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddCustomer}>Add Customer</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Customer
+        </Button>
       }
     >
       {/* Stats Cards */}
@@ -457,8 +317,8 @@ export default function CustomersPage() {
                 <p className="text-sm text-muted-foreground">Business Accounts</p>
                 <p className="text-2xl font-bold">{businessCustomers}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                <Building className="h-6 w-6 text-blue-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <Building className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -467,11 +327,11 @@ export default function CustomersPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Orders</p>
-                <p className="text-2xl font-bold">{totalOrders}</p>
+                <p className="text-sm text-muted-foreground">Total Shipments</p>
+                <p className="text-2xl font-bold">{totalShipments}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <Package className="h-6 w-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <Package className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -480,11 +340,11 @@ export default function CustomersPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalRevenue)}</p>
+                <p className="text-sm text-muted-foreground">Outstanding</p>
+                <p className="text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
-                <IndianRupee className="h-6 w-6 text-amber-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <IndianRupee className="h-6 w-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
           </CardContent>
@@ -521,9 +381,106 @@ export default function CustomersPage() {
       <DataTable
         data={filteredCustomers}
         columns={columns}
-        searchable={false}
         pageSize={10}
+        emptyMessage="No customers found"
       />
+
+      {/* Add Customer Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add New Customer</DialogTitle>
+            <DialogDescription>
+              Enter the details for the new customer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Full name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="type">Type</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: Customer["type"]) =>
+                    setFormData({ ...formData, type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual</SelectItem>
+                    <SelectItem value="Business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Email address"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="Phone number"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                placeholder="City"
+                value={formData.city}
+                onChange={(e) =>
+                  setFormData({ ...formData, city: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="address">Address</Label>
+              <Textarea
+                id="address"
+                placeholder="Full address"
+                value={formData.address}
+                onChange={(e) =>
+                  setFormData({ ...formData, address: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddCustomer}>Add Customer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Customer Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
@@ -539,19 +496,16 @@ export default function CustomersPage() {
                     {selectedCustomer.name
                       .split(" ")
                       .map((n) => n[0])
-                      .join("")}
+                      .join("")
+                      .slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <h3 className="text-xl font-semibold">{selectedCustomer.name}</h3>
-                  <p className="text-muted-foreground">
-                    {selectedCustomer.company || selectedCustomer.email}
-                  </p>
+                  <p className="text-muted-foreground">{selectedCustomer.email}</p>
                 </div>
                 <Badge
-                  variant={
-                    selectedCustomer.type === "Business" ? "default" : "secondary"
-                  }
+                  variant={selectedCustomer.type === "Business" ? "default" : "secondary"}
                   className="ml-auto"
                 >
                   {selectedCustomer.type}
@@ -576,10 +530,7 @@ export default function CustomersPage() {
                     </div>
                     <div className="flex items-start gap-2">
                       <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {selectedCustomer.address}, {selectedCustomer.city},{" "}
-                        {selectedCustomer.state} - {selectedCustomer.pincode}
-                      </span>
+                      <span>{selectedCustomer.address}, {selectedCustomer.city}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -587,57 +538,39 @@ export default function CustomersPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Order Summary
+                      Activity
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Orders</span>
-                      <span className="font-medium">
-                        {selectedCustomer.totalOrders}
-                      </span>
+                      <span className="text-muted-foreground">Total Shipments</span>
+                      <span className="font-medium">{selectedCustomer.totalShipments}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Spent</span>
-                      <span className="font-medium">
-                        {formatCurrency(selectedCustomer.totalSpent)}
+                      <span className="text-muted-foreground">Outstanding Balance</span>
+                      <span className={`font-medium ${selectedCustomer.outstandingBalance > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                        {formatCurrency(selectedCustomer.outstandingBalance)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Last Order</span>
-                      <span className="font-medium">
-                        {selectedCustomer.lastOrder
-                          ? formatDate(selectedCustomer.lastOrder)
-                          : "N/A"}
-                      </span>
-                    </div>
+                    {selectedCustomer.slaContract && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">SLA Contract</span>
+                        <span className="font-medium">{selectedCustomer.slaContract}</span>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-
-                {selectedCustomer.type === "Business" && (
-                  <Card className="md:col-span-2">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Business Information
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Company</span>
-                        <span className="font-medium">
-                          {selectedCustomer.company}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">GST Number</span>
-                        <span className="font-medium">
-                          {selectedCustomer.gstNumber || "N/A"}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
               </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                  Close
+                </Button>
+                <Button>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Customer
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

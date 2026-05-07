@@ -53,25 +53,31 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300",
-          collapsed ? "w-16" : "w-64"
+          "relative flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 ease-out",
+          collapsed ? "w-[72px]" : "w-[260px]"
         )}
       >
         {/* Logo */}
-        <div className="flex items-center h-16 px-4 border-b border-sidebar-border">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold">
+        <div className={cn(
+          "flex items-center h-16 border-b border-sidebar-border/50",
+          collapsed ? "px-3 justify-center" : "px-5"
+        )}>
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-bold text-lg shadow-lg shadow-primary/25">
               LP
             </div>
             {!collapsed && (
-              <span className="font-semibold text-lg">LogisticsPro</span>
+              <div className="flex flex-col">
+                <span className="font-display font-semibold text-lg tracking-tight">LogisticsPro</span>
+                <span className="text-[10px] text-sidebar-foreground/50 uppercase tracking-wider">Enterprise</span>
+              </div>
             )}
-          </div>
+          </Link>
         </div>
 
         {/* Navigation */}
         <ScrollArea className="flex-1 py-4">
-          <nav className="space-y-1 px-2">
+          <nav className={cn("space-y-1", collapsed ? "px-2" : "px-3")}>
             {filteredMenuItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
@@ -80,14 +86,21 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                    "group flex items-center gap-3 rounded-xl transition-all duration-200",
+                    collapsed ? "px-3 py-3 justify-center" : "px-4 py-2.5",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md shadow-sidebar-primary/25"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   )}
                 >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
+                  <Icon className={cn(
+                    "flex-shrink-0 transition-transform duration-200",
+                    collapsed ? "w-5 h-5" : "w-[18px] h-[18px]",
+                    !isActive && "group-hover:scale-110"
+                  )} />
+                  {!collapsed && (
+                    <span className="text-sm font-medium">{item.label}</span>
+                  )}
                 </Link>
               );
 
@@ -95,7 +108,7 @@ export function Sidebar() {
                 return (
                   <Tooltip key={item.id}>
                     <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" className="bg-popover text-popover-foreground">
+                    <TooltipContent side="right" sideOffset={12} className="bg-popover text-popover-foreground font-medium">
                       {item.label}
                     </TooltipContent>
                   </Tooltip>
@@ -108,49 +121,50 @@ export function Sidebar() {
         </ScrollArea>
 
         {/* User info and logout */}
-        <div className="border-t border-sidebar-border p-4">
+        <div className={cn(
+          "border-t border-sidebar-border/50",
+          collapsed ? "p-2" : "p-4"
+        )}>
           {!collapsed && user && (
-            <div className="mb-3 px-2">
+            <div className="mb-3 px-2 py-2 rounded-lg bg-sidebar-accent/30">
               <p className="text-sm font-medium truncate">{user.name}</p>
-              <p className="text-xs text-sidebar-foreground/60 truncate">{user.role}</p>
+              <p className="text-xs text-sidebar-foreground/50 truncate">{user.role}</p>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
-                    collapsed ? "w-full justify-center" : "flex-1"
-                  )}
-                  onClick={logout}
-                >
-                  <LogOut className="w-4 h-4" />
-                  {!collapsed && <span className="ml-2">Logout</span>}
-                </Button>
-              </TooltipTrigger>
-              {collapsed && (
-                <TooltipContent side="right" className="bg-popover text-popover-foreground">
-                  Logout
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size={collapsed ? "icon" : "default"}
+                className={cn(
+                  "w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 rounded-xl",
+                  collapsed ? "justify-center" : "justify-start gap-3 px-4"
+                )}
+                onClick={logout}
+              >
+                <LogOut className="w-[18px] h-[18px]" />
+                {!collapsed && <span className="text-sm font-medium">Logout</span>}
+              </Button>
+            </TooltipTrigger>
+            {collapsed && (
+              <TooltipContent side="right" sideOffset={12} className="bg-popover text-popover-foreground font-medium">
+                Logout
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
 
         {/* Collapse toggle */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
-          className="absolute top-20 -right-3 w-6 h-6 rounded-full bg-background border border-border shadow-sm hover:bg-accent"
+          className="absolute top-[72px] -right-3 w-6 h-6 rounded-full bg-background border-border shadow-md hover:bg-accent hover:scale-110 transition-transform duration-200"
           onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3.5 h-3.5" />
           ) : (
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           )}
         </Button>
       </aside>

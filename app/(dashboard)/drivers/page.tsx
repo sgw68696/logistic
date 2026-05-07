@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { DataTable } from "@/components/shared/DataTable";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -32,7 +31,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { getDrivers, createDriver, deleteDriver, type Driver } from "@/services/driverService";
 import { formatDate } from "@/lib/utils";
 import {
@@ -51,8 +49,8 @@ import {
   UserCheck,
   UserX,
   Truck,
-  MapPin,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -77,30 +75,54 @@ export default function DriversPage() {
 
   const loadDrivers = async () => {
     setLoading(true);
-    const data = await getDrivers();
-    setDrivers(data);
-    setLoading(false);
+    try {
+      const data = await getDrivers();
+      setDrivers(data);
+    } catch {
+      toast.error("Failed to load drivers");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddDriver = async () => {
-    await createDriver({
-      ...formData,
-      joinDate: new Date().toISOString().split("T")[0],
-      vehicleAssigned: null,
-      rating: 0,
-      totalTrips: 0,
-      documents: [],
-      tripHistory: [],
-    });
-    setIsAddDialogOpen(false);
-    resetForm();
-    loadDrivers();
+    if (!formData.name || !formData.phone || !formData.licenseNumber) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
+    try {
+      await createDriver({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        licenseNumber: formData.licenseNumber,
+        status: formData.status,
+        joinDate: new Date().toISOString(),
+        vehicleAssigned: null,
+        rating: 5.0,
+        totalTrips: 0,
+        documents: [],
+        tripHistory: [],
+      });
+      toast.success("Driver added successfully");
+      setIsAddDialogOpen(false);
+      resetForm();
+      loadDrivers();
+    } catch {
+      toast.error("Failed to add driver");
+    }
   };
 
   const handleDeleteDriver = async (id: string) => {
     if (confirm("Are you sure you want to delete this driver?")) {
-      await deleteDriver(id);
-      loadDrivers();
+      try {
+        await deleteDriver(id);
+        toast.success("Driver deleted successfully");
+        loadDrivers();
+      } catch {
+        toast.error("Failed to delete driver");
+      }
     }
   };
 
@@ -130,51 +152,53 @@ export default function DriversPage() {
     offDuty: drivers.filter((d) => d.status === "Off Duty").length,
   };
 
-  const columns = [
+  const columns: Column<Driver>[] = [
     {
       key: "name",
-      label: "Driver",
+      header: "Driver",
       sortable: true,
-      render: (value: string, row: Driver) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <Avatar>
             <AvatarFallback>
-              {typeof value === 'string' && value
-                ? value.split(" ").filter((n: string) => n).map((n: string) => n[0]).join("")
-                : "?"}
+              {item.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">{row?.email || ""}</p>
+            <p className="font-medium">{item.name}</p>
+            <p className="text-sm text-muted-foreground">{item.email}</p>
           </div>
         </div>
       ),
     },
     {
       key: "phone",
-      label: "Phone",
-      render: (value: string) => (
+      header: "Phone",
+      render: (item) => (
         <div className="flex items-center gap-2">
           <Phone className="h-4 w-4 text-muted-foreground" />
-          <span>{value}</span>
+          <span>{item.phone}</span>
         </div>
       ),
     },
     {
       key: "status",
-      label: "Status",
+      header: "Status",
       sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
+      render: (item) => <StatusBadge status={item.status} />,
     },
     {
       key: "vehicleAssigned",
-      label: "Vehicle",
-      render: (value: string | null) =>
-        value ? (
+      header: "Vehicle",
+      render: (item) =>
+        item.vehicleAssigned ? (
           <div className="flex items-center gap-2">
             <Truck className="h-4 w-4 text-muted-foreground" />
-            <span>{value}</span>
+            <span>{item.vehicleAssigned}</span>
           </div>
         ) : (
           <span className="text-muted-foreground">Unassigned</span>
@@ -182,39 +206,35 @@ export default function DriversPage() {
     },
     {
       key: "rating",
-      label: "Rating",
+      header: "Rating",
       sortable: true,
-      render: (value: number) => (
+      render: (item) => (
         <div className="flex items-center gap-1">
           <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-          <span className="font-medium">{typeof value === 'number' ? value.toFixed(1) : value}</span>
+          <span className="font-medium">{item.rating.toFixed(1)}</span>
         </div>
       ),
     },
     {
       key: "totalTrips",
-      label: "Trips",
-      sortable: true,
-    },
-    {
-      key: "licenseNumber",
-      label: "License Number",
+      header: "Trips",
       sortable: true,
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: Driver) => (
+      header: "",
+      render: (item) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => {
-                setSelectedDriver(row);
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedDriver(item);
                 setIsDetailOpen(true);
               }}
             >
@@ -231,7 +251,10 @@ export default function DriversPage() {
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => handleDeleteDriver(row.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteDriver(item.id);
+              }}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -244,8 +267,8 @@ export default function DriversPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="Driver Management" subtitle="Manage your drivers">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="Driver Management" description="Manage your drivers">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -253,99 +276,12 @@ export default function DriversPage() {
   return (
     <PageWrapper
       title="Driver Management"
-      subtitle="Manage your drivers and their assignments"
+      description="Manage your drivers and their assignments"
       actions={
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Driver
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add New Driver</DialogTitle>
-              <DialogDescription>
-                Enter the details for the new driver.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Enter full name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="driver@email.com"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    placeholder="+91 98765 43210"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="licenseNumber">License Number</Label>
-                  <Input
-                    id="licenseNumber"
-                    placeholder="DL-1234567890"
-                    value={formData.licenseNumber}
-                    onChange={(e) =>
-                      setFormData({ ...formData, licenseNumber: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value: Driver["status"]) =>
-                    setFormData({ ...formData, status: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="On Duty">On Duty</SelectItem>
-                    <SelectItem value="Off Duty">Off Duty</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddDriver}>Add Driver</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Driver
+        </Button>
       }
     >
       {/* Stats Cards */}
@@ -368,10 +304,10 @@ export default function DriversPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.active}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <UserCheck className="h-6 w-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <UserCheck className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -381,10 +317,10 @@ export default function DriversPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">On Duty</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.onDuty}</p>
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.onDuty}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                <Truck className="h-6 w-6 text-blue-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <Truck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -394,10 +330,10 @@ export default function DriversPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Off Duty</p>
-                <p className="text-2xl font-bold text-gray-600">{stats.offDuty}</p>
+                <p className="text-2xl font-bold text-muted-foreground">{stats.offDuty}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
-                <UserX className="h-6 w-6 text-gray-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <UserX className="h-6 w-6 text-muted-foreground" />
               </div>
             </div>
           </CardContent>
@@ -436,9 +372,96 @@ export default function DriversPage() {
       <DataTable
         data={filteredDrivers}
         columns={columns}
-        searchable={false}
         pageSize={10}
+        emptyMessage="No drivers found"
       />
+
+      {/* Add Driver Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Driver</DialogTitle>
+            <DialogDescription>
+              Enter the details for the new driver.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                placeholder="Enter full name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="driver@email.com"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="+91 98765 43210"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="licenseNumber">License Number</Label>
+                <Input
+                  id="licenseNumber"
+                  placeholder="DL-1234567890"
+                  value={formData.licenseNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, licenseNumber: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: Driver["status"]) =>
+                    setFormData({ ...formData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="On Duty">On Duty</SelectItem>
+                    <SelectItem value="Off Duty">Off Duty</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddDriver}>Add Driver</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Driver Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
@@ -451,9 +474,11 @@ export default function DriversPage() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
                   <AvatarFallback className="text-lg">
-                    {typeof selectedDriver.name === 'string' && selectedDriver.name
-                      ? selectedDriver.name.split(" ").filter((n: string) => n).map((n: string) => n[0]).join("")
-                      : "?"}
+                    {selectedDriver.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
@@ -506,45 +531,25 @@ export default function DriversPage() {
                       <span className="text-muted-foreground">Total Trips</span>
                       <span className="font-medium">{selectedDriver.totalTrips}</span>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      License Info
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">License Number</span>
-                      <span className="font-medium">{selectedDriver.licenseNumber}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Assignment
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Assigned Vehicle</span>
                       <span className="font-medium">
                         {selectedDriver.vehicleAssigned || "None"}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Documents</span>
-                      <span className="font-medium">
-                        {selectedDriver.documents.length} files
-                      </span>
-                    </div>
                   </CardContent>
                 </Card>
               </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                  Close
+                </Button>
+                <Button>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Driver
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { DataTable } from "@/components/shared/DataTable";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -32,8 +30,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { warehouseService, type Warehouse } from "@/services/warehouseService";
-import { formatCurrency } from "@/lib/utils";
+import { getWarehouses } from "@/services/warehouseService";
+import { type Warehouse } from "@/data/mockData";
 import {
   Plus,
   Search,
@@ -47,31 +45,16 @@ import {
   Edit,
   Trash2,
   TrendingUp,
-  AlertTriangle,
   CheckCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-
-  const [formData, setFormData] = useState({
-    name: "",
-    code: "",
-    address: "",
-    city: "",
-    state: "",
-    pincode: "",
-    capacity: 0,
-    manager: "",
-    contact: "",
-    status: "Active" as Warehouse["status"],
-  });
 
   useEffect(() => {
     loadWarehouses();
@@ -79,106 +62,67 @@ export default function WarehousesPage() {
 
   const loadWarehouses = async () => {
     setLoading(true);
-    const data = await warehouseService.getWarehouses();
-    setWarehouses(data);
-    setLoading(false);
-  };
-
-  const handleAddWarehouse = async () => {
-    await warehouseService.createWarehouse({
-      ...formData,
-      currentOccupancy: 0,
-      employees: 0,
-      zones: [],
-    });
-    setIsAddDialogOpen(false);
-    resetForm();
-    loadWarehouses();
-  };
-
-  const handleDeleteWarehouse = async (id: string) => {
-    if (confirm("Are you sure you want to delete this warehouse?")) {
-      await warehouseService.deleteWarehouse(id);
-      loadWarehouses();
+    try {
+      const data = await getWarehouses();
+      setWarehouses(data);
+    } catch {
+      toast.error("Failed to load warehouses");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      code: "",
-      address: "",
-      city: "",
-      state: "",
-      pincode: "",
-      capacity: 0,
-      manager: "",
-      contact: "",
-      status: "Active",
-    });
-  };
-
   const filteredWarehouses = warehouses.filter((warehouse) => {
-    const matchesSearch =
+    return (
       warehouse.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      warehouse.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      warehouse.city.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || warehouse.status === statusFilter;
-    return matchesSearch && matchesStatus;
+      warehouse.warehouseId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      warehouse.city.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
   const totalCapacity = warehouses.reduce((sum, w) => sum + w.capacity, 0);
-  const totalOccupancy = warehouses.reduce((sum, w) => sum + w.currentOccupancy, 0);
-  const utilizationRate = totalCapacity > 0 ? (totalOccupancy / totalCapacity) * 100 : 0;
-  const activeWarehouses = warehouses.filter((w) => w.status === "Active").length;
+  const totalStock = warehouses.reduce((sum, w) => sum + w.currentStock, 0);
+  const utilizationRate = totalCapacity > 0 ? (totalStock / totalCapacity) * 100 : 0;
 
-  const columns = [
+  const columns: Column<Warehouse>[] = [
     {
       key: "name",
-      label: "Warehouse",
+      header: "Warehouse",
       sortable: true,
-      render: (value: string, row: Warehouse) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <WarehouseIcon className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">{row.code}</p>
+            <p className="font-medium">{item.name}</p>
+            <p className="text-sm text-muted-foreground">{item.warehouseId}</p>
           </div>
         </div>
       ),
     },
     {
       key: "city",
-      label: "Location",
+      header: "Location",
       sortable: true,
-      render: (value: string, row: Warehouse) => (
+      render: (item) => (
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-muted-foreground" />
-          <span>
-            {value}, {row.state}
-          </span>
+          <span>{item.city}</span>
         </div>
       ),
     },
     {
-      key: "status",
-      label: "Status",
-      sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
-    },
-    {
-      key: "currentOccupancy",
-      label: "Utilization",
-      render: (value: number, row: Warehouse) => {
-        const percentage = (value / row.capacity) * 100;
+      key: "currentStock",
+      header: "Utilization",
+      render: (item) => {
+        const percentage = (item.currentStock / item.capacity) * 100;
         return (
           <div className="w-32">
             <div className="mb-1 flex items-center justify-between text-xs">
               <span>{percentage.toFixed(0)}%</span>
               <span className="text-muted-foreground">
-                {value.toLocaleString()}/{row.capacity.toLocaleString()}
+                {item.currentStock.toLocaleString()}/{item.capacity.toLocaleString()}
               </span>
             </div>
             <Progress
@@ -196,35 +140,29 @@ export default function WarehousesPage() {
       },
     },
     {
-      key: "employees",
-      label: "Staff",
+      key: "manager",
+      header: "Manager",
       sortable: true,
-      render: (value: number) => (
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span>{value}</span>
-        </div>
-      ),
     },
     {
-      key: "manager",
-      label: "Manager",
-      sortable: true,
+      key: "contact",
+      header: "Contact",
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: Warehouse) => (
+      header: "",
+      render: (item) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => {
-                setSelectedWarehouse(row);
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedWarehouse(item);
                 setIsDetailOpen(true);
               }}
             >
@@ -235,10 +173,7 @@ export default function WarehousesPage() {
               <Edit className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => handleDeleteWarehouse(row.id)}
-            >
+            <DropdownMenuItem className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </DropdownMenuItem>
@@ -250,8 +185,8 @@ export default function WarehousesPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="Warehouse Management" subtitle="Manage your warehouses">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="Warehouse Management" description="Manage your warehouses">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -259,161 +194,12 @@ export default function WarehousesPage() {
   return (
     <PageWrapper
       title="Warehouse Management"
-      subtitle="Manage your warehouses and inventory locations"
+      description="Manage your warehouses and inventory locations"
       actions={
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Warehouse
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Add New Warehouse</DialogTitle>
-              <DialogDescription>
-                Enter the details for the new warehouse.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Warehouse name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="code">Code</Label>
-                  <Input
-                    id="code"
-                    placeholder="e.g., WH-DEL-01"
-                    value={formData.code}
-                    onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  placeholder="Full address"
-                  value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    placeholder="City"
-                    value={formData.city}
-                    onChange={(e) =>
-                      setFormData({ ...formData, city: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    placeholder="State"
-                    value={formData.state}
-                    onChange={(e) =>
-                      setFormData({ ...formData, state: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    placeholder="Pincode"
-                    value={formData.pincode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, pincode: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="capacity">Capacity (sq ft)</Label>
-                  <Input
-                    id="capacity"
-                    type="number"
-                    placeholder="e.g., 50000"
-                    value={formData.capacity || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        capacity: parseInt(e.target.value) || 0,
-                      })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value: Warehouse["status"]) =>
-                      setFormData({ ...formData, status: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Active">Active</SelectItem>
-                      <SelectItem value="Inactive">Inactive</SelectItem>
-                      <SelectItem value="Maintenance">Maintenance</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="manager">Manager</Label>
-                  <Input
-                    id="manager"
-                    placeholder="Manager name"
-                    value={formData.manager}
-                    onChange={(e) =>
-                      setFormData({ ...formData, manager: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="contact">Contact</Label>
-                  <Input
-                    id="contact"
-                    placeholder="Phone number"
-                    value={formData.contact}
-                    onChange={(e) =>
-                      setFormData({ ...formData, contact: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddWarehouse}>Add Warehouse</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Warehouse
+        </Button>
       }
     >
       {/* Stats Cards */}
@@ -436,10 +222,10 @@ export default function WarehousesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-2xl font-bold text-green-600">{activeWarehouses}</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{warehouses.length}</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <CheckCircle className="h-6 w-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -450,10 +236,10 @@ export default function WarehousesPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Capacity</p>
                 <p className="text-2xl font-bold">{(totalCapacity / 1000).toFixed(0)}K</p>
-                <p className="text-xs text-muted-foreground">sq ft</p>
+                <p className="text-xs text-muted-foreground">units</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                <Package className="h-6 w-6 text-blue-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <Package className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -467,12 +253,12 @@ export default function WarehousesPage() {
               </div>
               <div
                 className={`flex h-12 w-12 items-center justify-center rounded-full ${
-                  utilizationRate > 80 ? "bg-amber-100" : "bg-green-100"
+                  utilizationRate > 80 ? "bg-amber-100 dark:bg-amber-900/30" : "bg-green-100 dark:bg-green-900/30"
                 }`}
               >
                 <TrendingUp
                   className={`h-6 w-6 ${
-                    utilizationRate > 80 ? "text-amber-600" : "text-green-600"
+                    utilizationRate > 80 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
                   }`}
                 />
               </div>
@@ -492,28 +278,14 @@ export default function WarehousesPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]">
-              <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Active">Active</SelectItem>
-              <SelectItem value="Inactive">Inactive</SelectItem>
-              <SelectItem value="Maintenance">Maintenance</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {/* Data Table */}
       <DataTable
         data={filteredWarehouses}
         columns={columns}
-        searchable={false}
         pageSize={10}
+        emptyMessage="No warehouses found"
       />
 
       {/* Warehouse Detail Dialog */}
@@ -530,9 +302,8 @@ export default function WarehousesPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold">{selectedWarehouse.name}</h3>
-                  <p className="text-muted-foreground">{selectedWarehouse.code}</p>
+                  <p className="text-muted-foreground">{selectedWarehouse.warehouseId}</p>
                 </div>
-                <StatusBadge status={selectedWarehouse.status} className="ml-auto" />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -543,41 +314,36 @@ export default function WarehousesPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <p>{selectedWarehouse.address}</p>
-                    <p>
-                      {selectedWarehouse.city}, {selectedWarehouse.state} -{" "}
-                      {selectedWarehouse.pincode}
-                    </p>
+                    <p>{selectedWarehouse.location}</p>
+                    <p>{selectedWarehouse.city}</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Capacity & Utilization
+                      Capacity &amp; Stock
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total Capacity</span>
                       <span className="font-medium">
-                        {selectedWarehouse.capacity.toLocaleString()} sq ft
+                        {selectedWarehouse.capacity.toLocaleString()} units
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Current Occupancy</span>
+                      <span className="text-muted-foreground">Current Stock</span>
                       <span className="font-medium">
-                        {selectedWarehouse.currentOccupancy.toLocaleString()} sq ft
+                        {selectedWarehouse.currentStock.toLocaleString()} units
                       </span>
                     </div>
-                    <Progress
-                      value={
-                        (selectedWarehouse.currentOccupancy /
-                          selectedWarehouse.capacity) *
-                        100
-                      }
-                      className="mt-2"
-                    />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Utilization</span>
+                      <span className="font-medium">
+                        {((selectedWarehouse.currentStock / selectedWarehouse.capacity) * 100).toFixed(1)}%
+                      </span>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -596,35 +362,41 @@ export default function WarehousesPage() {
                       <span className="text-muted-foreground">Contact</span>
                       <span className="font-medium">{selectedWarehouse.contact}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Staff</span>
-                      <span className="font-medium">
-                        {selectedWarehouse.employees} employees
-                      </span>
-                    </div>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Zones
+                      Inventory
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedWarehouse.zones.map((zone, index) => (
-                        <span
-                          key={index}
-                          className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                        >
-                          {zone}
-                        </span>
-                      ))}
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">SKUs</span>
+                      <span className="font-medium">{selectedWarehouse.inventory.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Recent Inbound</span>
+                      <span className="font-medium">{selectedWarehouse.inboundLogs.length} entries</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Recent Outbound</span>
+                      <span className="font-medium">{selectedWarehouse.outboundLogs.length} entries</span>
                     </div>
                   </CardContent>
                 </Card>
               </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                  Close
+                </Button>
+                <Button>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Warehouse
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

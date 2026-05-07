@@ -75,16 +75,16 @@ export default function ReportsPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="Reports & Analytics" subtitle="View detailed reports">
-        <SkeletonLoader type="cards" count={4} />
+      <PageWrapper title="Reports &amp; Analytics" description="View detailed reports">
+        <SkeletonLoader variant="card" count={4} />
       </PageWrapper>
     );
   }
 
   return (
     <PageWrapper
-      title="Reports & Analytics"
-      subtitle="View detailed reports and analytics"
+      title="Reports &amp; Analytics"
+      description="View detailed reports and analytics"
       actions={
         <div className="flex gap-2">
           <Select value={dateRange} onValueChange={setDateRange}>
