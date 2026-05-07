@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { DataTable } from "@/components/shared/DataTable";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { financeService, type Invoice, type Expense } from "@/services/financeService";
+import { getInvoices, createInvoice, getRevenueData, getExpenseData } from "@/services/financeService";
+import { type Invoice } from "@/data/mockData";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
   Plus,
@@ -43,23 +43,27 @@ import {
   FileText,
   Eye,
   Edit,
-  Trash2,
   Download,
   IndianRupee,
-  TrendingUp,
   TrendingDown,
   Receipt,
-  CreditCard,
-  Calendar,
-  Building,
   CheckCircle,
   Clock,
-  AlertCircle,
 } from "lucide-react";
+
+interface ExpenseItem {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  vendor: string;
+  date: string;
+  status: string;
+}
 
 export default function FinancePage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -90,22 +94,32 @@ export default function FinancePage() {
 
   const loadData = async () => {
     setLoading(true);
-    const [invoicesData, expensesData] = await Promise.all([
-      financeService.getInvoices(),
-      financeService.getExpenses(),
+    const [invoicesData, expenseData] = await Promise.all([
+      getInvoices(),
+      getExpenseData(),
     ]);
     setInvoices(invoicesData);
-    setExpenses(expensesData);
+    
+    // Generate mock expense items from expense data
+    const mockExpenses: ExpenseItem[] = [
+      { id: "exp-001", category: "Fuel", description: "Monthly fuel costs", amount: expenseData.fuel, vendor: "Indian Oil", date: "2025-01-15", status: "Paid" },
+      { id: "exp-002", category: "Maintenance", description: "Vehicle maintenance", amount: expenseData.maintenance, vendor: "AutoCare Services", date: "2025-01-10", status: "Paid" },
+      { id: "exp-003", category: "Salaries", description: "Staff salaries", amount: expenseData.staff, vendor: "Payroll", date: "2025-01-01", status: "Paid" },
+      { id: "exp-004", category: "Other", description: "Miscellaneous expenses", amount: expenseData.other, vendor: "Various", date: "2025-01-05", status: "Pending" },
+    ];
+    setExpenses(mockExpenses);
     setLoading(false);
   };
 
   const handleAddInvoice = async () => {
-    await financeService.createInvoice({
-      ...invoiceForm,
-      invoiceNumber: `INV-${Date.now()}`,
+    await createInvoice({
+      customerName: invoiceForm.customerName,
+      customerId: invoiceForm.customerId || `CUST-${Date.now()}`,
+      orderId: invoiceForm.orderId || `ORD-${Date.now()}`,
+      amount: invoiceForm.amount,
+      tax: invoiceForm.tax,
       total: invoiceForm.amount + invoiceForm.tax,
-      status: "Unpaid",
-      issueDate: new Date().toISOString().split("T")[0],
+      dueDate: invoiceForm.dueDate,
     });
     setIsAddInvoiceOpen(false);
     setInvoiceForm({
@@ -120,10 +134,12 @@ export default function FinancePage() {
   };
 
   const handleAddExpense = async () => {
-    await financeService.createExpense({
+    const newExpense: ExpenseItem = {
+      id: `exp-${Date.now()}`,
       ...expenseForm,
       status: "Pending",
-    });
+    };
+    setExpenses(prev => [...prev, newExpense]);
     setIsAddExpenseOpen(false);
     setExpenseForm({
       category: "",
@@ -132,7 +148,6 @@ export default function FinancePage() {
       vendor: "",
       date: "",
     });
-    loadData();
   };
 
   const totalRevenue = invoices.reduce((sum, i) => sum + i.total, 0);
@@ -146,7 +161,7 @@ export default function FinancePage() {
 
   const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch =
-      invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      invoice.invoiceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       invoice.customerName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || invoice.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -161,73 +176,64 @@ export default function FinancePage() {
     return matchesSearch && matchesStatus;
   });
 
-  const invoiceColumns = [
+  const invoiceColumns: Column<Invoice>[] = [
     {
-      key: "invoiceNumber",
-      label: "Invoice",
+      key: "invoiceId",
+      header: "Invoice",
       sortable: true,
-      render: (value: string, row: Invoice) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <FileText className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">{row.orderId}</p>
+            <p className="font-medium">{item.invoiceId}</p>
+            <p className="text-sm text-muted-foreground">{item.orderId}</p>
           </div>
         </div>
       ),
     },
     {
       key: "customerName",
-      label: "Customer",
+      header: "Customer",
       sortable: true,
-      render: (value: string) => (
-        <div className="flex items-center gap-2">
-          <Building className="h-4 w-4 text-muted-foreground" />
-          <span>{value}</span>
-        </div>
-      ),
+      render: (item) => <span>{item.customerName}</span>,
     },
     {
-      key: "issueDate",
-      label: "Issue Date",
+      key: "createdAt",
+      header: "Issue Date",
       sortable: true,
-      render: (value: string) => formatDate(value),
+      render: (item) => formatDate(item.createdAt),
     },
     {
       key: "dueDate",
-      label: "Due Date",
+      header: "Due Date",
       sortable: true,
-      render: (value: string) => {
-        const isOverdue =
-          new Date(value) < new Date() &&
-          invoices.find((i) => i.dueDate === value)?.status !== "Paid";
+      render: (item) => {
+        const isOverdue = new Date(item.dueDate) < new Date() && item.status !== "Paid";
         return (
           <span className={isOverdue ? "font-medium text-red-600" : ""}>
-            {formatDate(value)}
+            {formatDate(item.dueDate)}
           </span>
         );
       },
     },
     {
       key: "total",
-      label: "Amount",
+      header: "Amount",
       sortable: true,
-      render: (value: number) => (
-        <span className="font-medium">{formatCurrency(value)}</span>
-      ),
+      render: (item) => <span className="font-medium">{formatCurrency(item.total)}</span>,
     },
     {
       key: "status",
-      label: "Status",
+      header: "Status",
       sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
+      render: (item) => <StatusBadge status={item.status} />,
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: Invoice) => (
+      header: "",
+      render: () => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
@@ -247,65 +253,59 @@ export default function FinancePage() {
               <Edit className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => financeService.deleteInvoice(row.id).then(loadData)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
     },
   ];
 
-  const expenseColumns = [
+  const expenseColumns: Column<ExpenseItem>[] = [
     {
       key: "description",
-      label: "Description",
+      header: "Description",
       sortable: true,
-      render: (value: string, row: Expense) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
             <Receipt className="h-5 w-5 text-red-600" />
           </div>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">{row.category}</p>
+            <p className="font-medium">{item.description}</p>
+            <p className="text-sm text-muted-foreground">{item.category}</p>
           </div>
         </div>
       ),
     },
     {
       key: "vendor",
-      label: "Vendor",
+      header: "Vendor",
       sortable: true,
+      render: (item) => <span>{item.vendor}</span>,
     },
     {
       key: "date",
-      label: "Date",
+      header: "Date",
       sortable: true,
-      render: (value: string) => formatDate(value),
+      render: (item) => formatDate(item.date),
     },
     {
       key: "amount",
-      label: "Amount",
+      header: "Amount",
       sortable: true,
-      render: (value: number) => (
-        <span className="font-medium text-red-600">-{formatCurrency(value)}</span>
+      render: (item) => (
+        <span className="font-medium text-red-600">-{formatCurrency(item.amount)}</span>
       ),
     },
     {
       key: "status",
-      label: "Status",
+      header: "Status",
       sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
+      render: (item) => <StatusBadge status={item.status} />,
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: Expense) => (
+      header: "",
+      render: () => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
@@ -320,13 +320,6 @@ export default function FinancePage() {
             <DropdownMenuItem>
               <Edit className="mr-2 h-4 w-4" />
               Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => financeService.deleteExpense(row.id).then(loadData)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -434,10 +427,7 @@ export default function FinancePage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAddExpenseOpen(false)}
-                >
+                <Button variant="outline" onClick={() => setIsAddExpenseOpen(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleAddExpense}>Add Expense</Button>
@@ -522,10 +512,7 @@ export default function FinancePage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAddInvoiceOpen(false)}
-                >
+                <Button variant="outline" onClick={() => setIsAddInvoiceOpen(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleAddInvoice}>Create Invoice</Button>
@@ -597,70 +584,44 @@ export default function FinancePage() {
         </Card>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <TabsList>
-            <TabsTrigger value="invoices">
-              Invoices ({invoices.length})
-            </TabsTrigger>
-            <TabsTrigger value="expenses">
-              Expenses ({expenses.length})
-            </TabsTrigger>
+            <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
+            <TabsTrigger value="expenses">Expenses ({expenses.length})</TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
-            <div className="relative">
+            <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder={`Search ${activeTab}...`}
-                className="w-[250px] pl-10"
+                placeholder="Search..."
+                className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[130px]">
                 <Filter className="mr-2 h-4 w-4" />
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                {activeTab === "invoices" ? (
-                  <>
-                    <SelectItem value="Paid">Paid</SelectItem>
-                    <SelectItem value="Unpaid">Unpaid</SelectItem>
-                    <SelectItem value="Partial">Partial</SelectItem>
-                    <SelectItem value="Overdue">Overdue</SelectItem>
-                  </>
-                ) : (
-                  <>
-                    <SelectItem value="Pending">Pending</SelectItem>
-                    <SelectItem value="Approved">Approved</SelectItem>
-                    <SelectItem value="Paid">Paid</SelectItem>
-                    <SelectItem value="Rejected">Rejected</SelectItem>
-                  </>
-                )}
+                <SelectItem value="Paid">Paid</SelectItem>
+                <SelectItem value="Unpaid">Unpaid</SelectItem>
+                <SelectItem value="Partial">Partial</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
         <TabsContent value="invoices">
-          <DataTable
-            data={filteredInvoices}
-            columns={invoiceColumns}
-            searchable={false}
-            pageSize={10}
-          />
+          <DataTable data={filteredInvoices} columns={invoiceColumns} pageSize={10} />
         </TabsContent>
 
         <TabsContent value="expenses">
-          <DataTable
-            data={filteredExpenses}
-            columns={expenseColumns}
-            searchable={false}
-            pageSize={10}
-          />
+          <DataTable data={filteredExpenses} columns={expenseColumns} pageSize={10} />
         </TabsContent>
       </Tabs>
     </PageWrapper>
