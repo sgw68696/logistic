@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 
 export default function NotificationsPage() {
-  const { notifications, markAsRead, markAllAsRead, clearNotification } =
+  const { notifications, markAsRead, markAllAsRead, deleteNotification } =
     useNotifications();
   const [filter, setFilter] = useState<string>("all");
 
@@ -56,7 +56,7 @@ export default function NotificationsPage() {
   return (
     <PageWrapper
       title="Notifications"
-      subtitle={`You have ${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`}
+      description={`You have ${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`}
       actions={
         <div className="flex gap-2">
           <Button variant="outline" onClick={markAllAsRead} disabled={unreadCount === 0}>
@@ -135,7 +135,7 @@ export default function NotificationsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => clearNotification(notification.id)}
+                            onClick={() => deleteNotification(notification.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

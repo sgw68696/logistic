@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { DataTable } from "@/components/shared/DataTable";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SkeletonLoader } from "@/components/shared/SkeletonLoader";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { userService, type User } from "@/services/userService";
+import { getUsers, createUser, deleteUser } from "@/services/userService";
+import { type User } from "@/data/mockData";
 import { formatDate } from "@/lib/utils";
 import {
   Plus,
@@ -48,7 +49,6 @@ import {
   Phone,
   Shield,
   UserCheck,
-  UserX,
   Key,
 } from "lucide-react";
 
@@ -67,7 +67,7 @@ export default function UsersPage() {
     email: "",
     phone: "",
     role: "Staff" as User["role"],
-    department: "",
+    username: "",
     status: "Active" as User["status"],
   });
 
@@ -77,18 +77,15 @@ export default function UsersPage() {
 
   const loadUsers = async () => {
     setLoading(true);
-    const data = await userService.getUsers();
+    const data = await getUsers();
     setUsers(data);
     setLoading(false);
   };
 
   const handleAddUser = async () => {
-    await userService.createUser({
+    await createUser({
       ...formData,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
-      lastLogin: null,
-      createdAt: new Date().toISOString().split("T")[0],
-      permissions: getDefaultPermissions(formData.role),
+      username: formData.username || formData.email.split("@")[0],
     });
     setIsAddDialogOpen(false);
     resetForm();
@@ -97,23 +94,8 @@ export default function UsersPage() {
 
   const handleDeleteUser = async (id: string) => {
     if (confirm("Are you sure you want to delete this user?")) {
-      await userService.deleteUser(id);
+      await deleteUser(id);
       loadUsers();
-    }
-  };
-
-  const getDefaultPermissions = (role: User["role"]): string[] => {
-    switch (role) {
-      case "Admin":
-        return ["all"];
-      case "Manager":
-        return ["dashboard", "shipments", "orders", "fleet", "drivers", "reports"];
-      case "Dispatcher":
-        return ["dashboard", "shipments", "dispatch", "drivers"];
-      case "Staff":
-        return ["dashboard", "shipments"];
-      default:
-        return ["dashboard"];
     }
   };
 
@@ -123,7 +105,7 @@ export default function UsersPage() {
       email: "",
       phone: "",
       role: "Staff",
-      department: "",
+      username: "",
       status: "Active",
     });
   };
@@ -157,72 +139,73 @@ export default function UsersPage() {
     }
   };
 
-  const columns = [
+  const columns: Column<User>[] = [
     {
       key: "name",
-      label: "User",
+      header: "User",
       sortable: true,
-      render: (value: string, row: User) => (
+      render: (item) => (
         <div className="flex items-center gap-3">
           <Avatar>
-            <AvatarImage src={row.avatar} alt={value} />
+            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${item.name}`} alt={item.name} />
             <AvatarFallback>
-              {value
+              {item.name
                 .split(" ")
                 .map((n) => n[0])
                 .join("")}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{value}</p>
-            <p className="text-sm text-muted-foreground">{row.email}</p>
+            <p className="font-medium">{item.name}</p>
+            <p className="text-sm text-muted-foreground">{item.email}</p>
           </div>
         </div>
       ),
     },
     {
       key: "role",
-      label: "Role",
+      header: "Role",
       sortable: true,
-      render: (value: string) => (
-        <Badge className={getRoleBadgeColor(value)}>
+      render: (item) => (
+        <Badge className={getRoleBadgeColor(item.role)}>
           <Shield className="mr-1 h-3 w-3" />
-          {value}
+          {item.role}
         </Badge>
       ),
     },
     {
-      key: "department",
-      label: "Department",
+      key: "username",
+      header: "Username",
       sortable: true,
+      render: (item) => <span>@{item.username}</span>,
     },
     {
       key: "phone",
-      label: "Phone",
-      render: (value: string) => (
+      header: "Phone",
+      render: (item) => (
         <div className="flex items-center gap-2">
           <Phone className="h-4 w-4 text-muted-foreground" />
-          <span>{value}</span>
+          <span>{item.phone || "N/A"}</span>
         </div>
       ),
     },
     {
       key: "status",
-      label: "Status",
+      header: "Status",
       sortable: true,
-      render: (value: string) => <StatusBadge status={value} />,
+      render: (item) => <StatusBadge status={item.status} />,
     },
     {
       key: "lastLogin",
-      label: "Last Login",
+      header: "Last Login",
       sortable: true,
-      render: (value: string | null) =>
-        value ? formatDate(value, "datetime") : "Never",
+      render: (item) =>
+        item.lastLogin ? formatDate(item.lastLogin) : "Never",
     },
     {
       key: "actions",
-      label: "",
-      render: (_: unknown, row: User) => (
+      header: "",
+      render: (item) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
@@ -232,7 +215,7 @@ export default function UsersPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={() => {
-                setSelectedUser(row);
+                setSelectedUser(item);
                 setIsDetailOpen(true);
               }}
             >
@@ -249,7 +232,7 @@ export default function UsersPage() {
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => handleDeleteUser(row.id)}
+              onClick={() => handleDeleteUser(item.id)}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -262,8 +245,8 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <PageWrapper title="User Management" subtitle="Manage system users">
-        <SkeletonLoader type="table" />
+      <PageWrapper title="User Management" description="Manage system users">
+        <SkeletonLoader variant="table" count={10} />
       </PageWrapper>
     );
   }
@@ -271,7 +254,7 @@ export default function UsersPage() {
   return (
     <PageWrapper
       title="User Management"
-      subtitle="Manage system users and permissions"
+      description="Manage system users and permissions"
       actions={
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -345,13 +328,13 @@ export default function UsersPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="department">Department</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input
-                    id="department"
-                    placeholder="e.g., Operations"
-                    value={formData.department}
+                    id="username"
+                    placeholder="e.g., johndoe"
+                    value={formData.username}
                     onChange={(e) =>
-                      setFormData({ ...formData, department: e.target.value })
+                      setFormData({ ...formData, username: e.target.value })
                     }
                   />
                 </div>
@@ -479,12 +462,7 @@ export default function UsersPage() {
       </div>
 
       {/* Data Table */}
-      <DataTable
-        data={filteredUsers}
-        columns={columns}
-        searchable={false}
-        pageSize={10}
-      />
+      <DataTable data={filteredUsers} columns={columns} pageSize={10} />
 
       {/* User Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
@@ -496,7 +474,7 @@ export default function UsersPage() {
             <div className="space-y-6">
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarImage src={selectedUser.avatar} alt={selectedUser.name} />
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.name}`} alt={selectedUser.name} />
                   <AvatarFallback className="text-lg">
                     {selectedUser.name
                       .split(" ")
@@ -519,24 +497,11 @@ export default function UsersPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{selectedUser.phone}</span>
+                  <span>{selectedUser.phone || "N/A"}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Shield className="h-4 w-4 text-muted-foreground" />
-                  <span>{selectedUser.department}</span>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 text-sm font-medium text-muted-foreground">
-                  Permissions
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {selectedUser.permissions.map((permission, index) => (
-                    <Badge key={index} variant="outline">
-                      {permission}
-                    </Badge>
-                  ))}
+                  <span>@{selectedUser.username}</span>
                 </div>
               </div>
 
@@ -545,7 +510,7 @@ export default function UsersPage() {
                 <span>
                   Last Login:{" "}
                   {selectedUser.lastLogin
-                    ? formatDate(selectedUser.lastLogin, "datetime")
+                    ? formatDate(selectedUser.lastLogin)
                     : "Never"}
                 </span>
               </div>
